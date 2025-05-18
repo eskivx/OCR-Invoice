@@ -34,21 +34,16 @@ def parse_pdf():
     item_regex = r"(\d+)\s+unidade\(s\) de:\s*(.*?)\s+Vendido por:\s*(.*?)\s+Condição:.*?R\$ ([\d.,]+)"
     matches = re.findall(item_regex, text, re.DOTALL)
 
-    itens = []
+    item_nomes = []
     for match in matches:
         quantidade, nome, fornecedor, valor = match
-        itens.append({
-            "nome_produto": nome.strip(),
-            "quantidade": int(quantidade),
-            "fornecedorNome": fornecedor.strip(),
-            "valor_unitario": valor.replace(".", "").replace(",", ".")
-        })
+        item_nomes.append(nome.strip())
 
     data_pedido = re.search(r"Pedido feito:\s*([\d]{1,2} de \w+ de \d{4})", text)
     total_geral = re.search(r"Total geral:\s*R\$ ([\d.,]+)", text)
 
     result = {
-        "itemNomes": itens,
+        "itemNomes": item_nomes,
         "preco": total_geral.group(1).replace(".", "").replace(",", ".") if total_geral else "",
         "dataCompra": data_pedido.group(1) if data_pedido else "",
         "dataInvoice": data_pdf_formatada
