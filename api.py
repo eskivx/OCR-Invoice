@@ -7,7 +7,7 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:5173"])
 
-@app.route('/parse-pdf', methods=['POST'])
+@app.route('/upload', methods=['POST'])
 def parse_pdf():
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
