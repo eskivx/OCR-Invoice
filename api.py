@@ -13,30 +13,43 @@ def remove_namespace(doc):
 
 def xml_to_dict(elem):
     d = {}
+
+    # Se tem atributos, adiciona
     if elem.attrib:
         d['@attributes'] = elem.attrib
 
-    text = elem.text.strip() if elem.text else ''
-    if text:
-        d['#text'] = text
-
     children = list(elem)
-    if children:
-        child_dict = {}
-        for child in children:
-            child_res = xml_to_dict(child)
-            tag = child.tag
-            if tag not in child_dict:
-                child_dict[tag] = []
-            child_dict[tag].append(child_res)
 
-        for tag, items in child_dict.items():
-            if len(items) == 1:
-                child_dict[tag] = items[0]
+    # Se não tem filhos e tem texto, retorna texto puro (se não tem atributos)
+    if not children:
+        text = elem.text.strip() if elem.text else ''
+        if elem.attrib:
+            # Tem atributos, guarda texto em #text
+            if text:
+                d['#text'] = text
+            return d
+        else:
+            # Sem atributos, retorna só o texto
+            return text
 
-        d.update(child_dict)
+    # Se tem filhos, converte recursivamente
+    child_dict = {}
+    for child in children:
+        child_res = xml_to_dict(child)
+        tag = child.tag
+        if tag not in child_dict:
+            child_dict[tag] = []
+        child_dict[tag].append(child_res)
+
+    # Simplifica listas com um único item
+    for tag, items in child_dict.items():
+        if len(items) == 1:
+            child_dict[tag] = items[0]
+
+    d.update(child_dict)
 
     return d
+
 
 @app.route('/upload', methods=['POST'])
 def parse_xml_full():
