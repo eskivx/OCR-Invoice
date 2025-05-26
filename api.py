@@ -1,56 +1,73 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import fitz
-import re
-from datetime import datetime
+import xml.etree.ElementTree as ET
 
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:5173"])
+CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+
+def remove_namespace(doc):
+    for elem in doc.iter():
+        if '}' in elem.tag:
+            elem.tag = elem.tag.split('}', 1)[1]
+    return doc
+
+def xml_to_dict(elem):
+    d = {}
+
+    # Se tem atributos, adiciona
+    if elem.attrib:
+        d['@attributes'] = elem.attrib
+
+    children = list(elem)
+
+    # Se não tem filhos e tem texto, retorna texto puro (se não tem atributos)
+    if not children:
+        text = elem.text.strip() if elem.text else ''
+        if elem.attrib:
+            # Tem atributos, guarda texto em #text
+            if text:
+                d['#text'] = text
+            return d
+        else:
+            # Sem atributos, retorna só o texto
+            return text
+
+    # Se tem filhos, converte recursivamente
+    child_dict = {}
+    for child in children:
+        child_res = xml_to_dict(child)
+        tag = child.tag
+        if tag not in child_dict:
+            child_dict[tag] = []
+        child_dict[tag].append(child_res)
+
+    # Simplifica listas com um único item
+    for tag, items in child_dict.items():
+        if len(items) == 1:
+            child_dict[tag] = items[0]
+
+    d.update(child_dict)
+
+    return d
+
 
 @app.route('/upload', methods=['POST'])
-def parse_pdf():
+def parse_xml_full():
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
 
     file = request.files['file']
-    file_stream = file.read()
-    doc = fitz.open(stream=file_stream, filetype="pdf")
-    text = "".join([page.get_text() for page in doc])
+    xml_content = file.read()
 
-    metadata = doc.metadata
-    data_pdf = metadata.get("modDate") or metadata.get("creationDate")
+    try:
+        root = ET.fromstring(xml_content)
+    except ET.ParseError:
+        return jsonify({"error": "Invalid XML file"}), 400
 
-    # Formatar data do PDF
-    data_pdf_formatada = ""
-    if data_pdf and data_pdf.startswith("D:"):
-        try:
-            data_pdf_formatada = datetime.strptime(data_pdf[2:16], "%Y%m%d%H%M%S").strftime("%d/%m/%Y")
-        except:
-            data_pdf_formatada = ""
+    root = remove_namespace(root)
+    data_dict = {root.tag: xml_to_dict(root)}
 
-    doc.close()
-
-    # Captura itens com fornecedor incluso
-    item_regex = r"(\d+)\s+unidade\(s\) de:\s*(.*?)\s+Vendido por:\s*(.*?)\s+Condição:.*?R\$ ([\d.,]+)"
-    matches = re.findall(item_regex, text, re.DOTALL)
-
-    item_nomes = []
-    for match in matches:
-        quantidade, nome, fornecedor, valor = match
-        item_nomes.append(nome.strip())
-
-    data_pedido = re.search(r"Pedido feito:\s*([\d]{1,2} de \w+ de \d{4})", text)
-    total_geral = re.search(r"Total geral:\s*R\$ ([\d.,]+)", text)
-
-    result = {
-        "itemNomes": item_nomes,
-        "preco": total_geral.group(1).replace(".", "").replace(",", ".") if total_geral else "",
-        "dataCompra": data_pedido.group(1) if data_pedido else "",
-        "dataInvoice": data_pdf_formatada
-    }
-
-    return jsonify(result)
+    return jsonify(data_dict)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
-
